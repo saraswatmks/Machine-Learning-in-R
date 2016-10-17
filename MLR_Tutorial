@@ -1,0 +1,482 @@
+#Practicing Machine Learning Algorithms in R
+
+path <- "C:/Users/manish/Desktop/Data/Amonth_Wise/January 2016"
+setwd(path)
+
+#load libraries and data
+library(mlr)
+
+listLearners("classif", check.packages = TRUE)[c("class","package")]
+
+train <- read.csv("train_loan.csv", na.strings = c(""," ",NA))
+test <- read.csv("test_Y3wMUE5.csv", na.strings = c(""," ",NA))
+
+# summarizeColumns(train)
+# summarizeColumns(test)
+
+# #let's see which columns have missing values
+# colSums(is.na(train))
+# colSums(is.na(test))
+
+#check data
+# prop.table(table(train$Gender, train$Loan_Status),1)
+# library(gmodels)
+# 
+# prop.table(table(train$Married, train$Loan_Status),1)
+
+#set classes
+train$Credit_History <- as.factor(train$Credit_History)
+test$Credit_History <- as.factor(test$Credit_History)
+
+# hist(train$ApplicantIncome, breaks = 300, main = "Applicant Income Chart",xlab = "ApplicantIncome")
+# hist(train$CoapplicantIncome, breaks = 100,main = "Coapplicant Income Chart",xlab = "CoapplicantIncome")
+# 
+# summary(train)
+# summary(test)
+
+
+#rename level of Dependents
+levels(train$Dependents)[4] <- "3"
+levels(test$Dependents)[4] <- "3"
+
+#impute missing values by class
+#do not make dummy variables, they are not helping
+imp <- impute(train, classes = list(factor = imputeMode(), integer = imputeMean()), dummy.classes = c("factor","integer"), dummy.type = "numeric")
+imp1 <- impute(test, classes = list(factor = imputeMode(), integer = imputeMean()), dummy.classes = c("factor","integer"), dummy.type = "numeric")
+
+imp_train <- imp$data
+imp_test <- imp1$data
+
+#married.dummy is not in test
+
+# table(is.na(imp_test))
+# table(is.na(imp_train))
+
+#Optional
+# rpart_imp <- impute(train, target = "Loan_Status",
+#                 classes = list(numeric = imputeLearner(makeLearner("regr.rpart")),
+#                 factor = imputeLearner(makeLearner("classif.rpart"))),
+#                 dummy.classes = c("numeric","factor"),
+#                 dummy.type = "numeric")
+
+
+
+
+
+
+#data preprocessing
+#mlr caplargevalues
+library(mlr)
+cd <- capLargeValues(imp_train, target = "Loan_Status",cols = c("ApplicantIncome"),threshold = 40000)
+cd <- capLargeValues(cd, target = "Loan_Status",cols = c("CoapplicantIncome"),threshold = 21000)
+cd <- capLargeValues(cd, target = "Loan_Status",cols = c("LoanAmount"),threshold = 520)
+
+cd_train <- cd
+
+imp_test$Loan_Status <- sample(c("N","Y"),size = 367,replace = T)
+
+cde <- capLargeValues(imp_test, target = "Loan_Status",cols = c("ApplicantIncome"),threshold = 33000)
+cde <- capLargeValues(cde, target = "Loan_Status",cols = c("CoapplicantIncome"),threshold = 16000)
+cde <- capLargeValues(cde, target = "Loan_Status",cols = c("LoanAmount"),threshold = 470)
+
+cd_test <- cde
+
+
+#convert numeric to factor - train
+for (f in names(cd_train[, c(14:20)])) {
+        if( class(cd_train[, c(14:20)] [[f]]) == "numeric"){
+                levels <- unique(cd_train[, c(14:20)][[f]])
+                cd_train[, c(14:20)][[f]] <- as.factor(factor(cd_train[, c(14:20)][[f]], levels = levels))
+        }
+}        
+
+#convert numeric to factor - test
+for (f in names(cd_test[, c(13:18)])) {
+        if( class(cd_test[, c(13:18)] [[f]]) == "numeric"){
+                levels <- unique(cd_test[, c(13:18)][[f]])
+                cd_test[, c(13:18)][[f]] <- as.factor(factor(cd_test[, c(13:18)][[f]], levels = levels))
+        }
+}        
+
+
+#creating some new features
+#Total_Income is highly correlated
+cd_train$Total_Income <- cd_train$ApplicantIncome + cd_train$CoapplicantIncome
+cd_test$Total_Income <- cd_test$ApplicantIncome + cd_test$CoapplicantIncome
+
+cd_train$Income_by_loan <- cd_train$Total_Income/cd_train$LoanAmount
+cd_test$Income_by_loan <- cd_test$Total_Income/cd_test$LoanAmount
+
+cd_train$Loan_amount_by_term <- cd_train$LoanAmount/cd_train$Loan_Amount_Term
+cd_test$Loan_amount_by_term <- cd_test$LoanAmount/cd_test$Loan_Amount_Term
+
+#splitting the data based on class
+az <- split(names(cd_train), sapply(cd_train, function(x){ class(x)}))
+
+#creating a data frame of numeric variables
+xs <- cd_train[az$numeric]
+
+#check correlation
+cor(xs)
+
+#remove this column
+cd_train$Total_Income <- NULL
+cd_test$Total_Income <- NULL
+
+#high correlation
+#cor(cd_train$Total_Income, cd_train$ApplicantIncome)
+
+
+#if total income is more than average
+#cd_train$High_Income <- ifelse(cd_train$Total_Income > mean(cd_train$Total_Income),1,0)
+#cd_test$High_Income <- ifelse(cd_test$Total_Income > mean(cd_test$Total_Income),1,0)
+
+
+# summarizeColumns(cd_train)
+# summarizeColumns(cd_test)
+
+
+
+#create a task
+#trainTask <- makeClassifTask(data = cd_train,target = "Loan_Status")
+testTask <- makeClassifTask(data = cd_test, target = "Loan_Status")
+
+trainTask <- makeClassifTask(data = cd_train,target = "Loan_Status", positive = "Y")
+trainTask
+testTask
+
+
+#normalize the variables
+trainTask <- normalizeFeatures(trainTask,method = "standardize")
+testTask <- normalizeFeatures(testTask,method = "standardize")
+
+trainTask <- dropFeatures(task = trainTask,features = c("Loan_ID","Married.dummy"))
+
+
+#imporant variables
+#credit_history income_by_loan property_area Married Education Dependents
+
+
+#calculate important features
+im_feat <- generateFilterValuesData(trainTask, method = c("information.gain","chi.squared"))
+plotFilterValues(im_feat,n.show = 15)
+plotFilterValuesGGVIS(im_feat)
+
+#let's train the data
+#check list of learners
+listLearners("classif")[c("class","package")]
+
+#Load QDA 
+qda.learner <- makeLearner("classif.qda", predict.type = "response")
+
+#train model
+# qda.cv <- crossval(learner = qda.learner, task = trainTask, iters = 5,stratify = T,measures = acc,show.info = F)
+# qda.cv #score is 0.78
+#train model
+qmodel <- train(qda.learner, trainTask)
+
+#predict on test data
+qpredict <- predict(qmodel, testTask)
+
+#create submission file
+submit <- data.frame(Loan_ID = test$Loan_ID, Loan_Status = qpredict$data$response)
+write.csv(submit, "qdaclass11.csv",row.names = F)
+
+
+
+#logistic regression
+logistic.learner <- makeLearner("classif.logreg", predict.type = "response")
+
+#cross validation accuracy
+cv.logistic <- crossval(learner = logistic.learner,task = trainTask,iters = 3,stratify = TRUE,measures = acc,show.info = F)
+cv.logistic$aggr
+cv.logistic$measures.test
+
+#train model
+fmodel <- train(logistic.learner,trainTask)
+fmodel
+
+getLearnerModel(fmodel)
+
+#predict
+fpmodel <- predict(fmodel, testTask)
+head(getPredictionTruth(fpmodel))
+head(getPredictionResponse(fpmodel))
+
+#submission file
+submit <- data.frame(Loan_ID = test$Loan_ID, Loan_Status = fpmodel$data$response)
+write.csv(submit, "logreg11.csv",row.names = F) #0.791666666667
+
+
+#Decision Tree
+getParamSet("classif.rpart")
+
+#make tree learner
+makeatree <- makeLearner("classif.rpart", predict.type = "response")
+
+#grid search to find hyperparameters
+gs <- makeParamSet(
+        makeIntegerParam("minsplit",lower = 10, upper = 50),
+        makeIntegerParam("minbucket", lower = 5, upper = 50),
+        makeNumericParam("cp", lower = 0.001, upper = 0.2)
+)
+
+#set 3 fold cross validation
+set_cv <- makeResampleDesc("CV",iters = 3L)
+
+#do a grid search
+gscontrol <- makeTuneControlGrid()
+
+#hypertuning #took 15 minutes
+stune <- tuneParams(learner = makeatree, resampling = set_sv, task = trainTask, par.set = gs, control = gscontrol, measures = acc)
+#best parameter
+stune$x #returns a list of best parameters
+# $minsplit
+# [1] 37
+# 
+# $minbucket
+# [1] 15
+# 
+# $cp
+# [1] 0.001
+
+#cross validation result
+stune$y #0.8127132
+        
+#using hyperparameters for modeling
+t.tree <- setHyperPars(makeatree, par.vals = stune$x)
+o.tree <- setHyperPars(makeatree, par.vals = list(minsplit = 37, minbucket = 15, cp = 0.001))
+
+#train a model
+t.rpart <- train(t.tree, trainTask)
+getLearnerModel(t.rpart)
+
+#predict
+tpmodel <- predict(t.rpart, testTask)
+
+#submission file
+submit <- data.frame(Loan_ID = test$Loan_ID, Loan_Status = tpmodel$data$response)
+write.csv(submit, "dtree11.csv",row.names = F) #0.791666666667 #no improvement
+
+#RANDOMFOREST
+#randomForest model with cross validation stratified sampling
+set.seed(1)
+getParamSet("classif.randomForest")
+rf <- makeLearner("classif.randomForest", predict.type = "response", par.vals = list(ntree = 200, mtry = 3))
+rf$par.vals <- list(
+        importance = TRUE
+)
+
+rf.task <- filterFeatures(trainTask, method = "rf.importance", abs = 6)
+
+#tune its hyper parameters
+#grid search to find hyperparameters
+rf_param <- makeParamSet(
+        makeIntegerParam("ntree",lower = 50, upper = 500),
+        makeIntegerParam("mtry", lower = 3, upper = 10),
+        makeIntegerParam("nodesize", lower = 10, upper = 50)
+)
+
+#let's do random search (takes less time than grid) for 50 iterations
+rancontrol <- makeTuneControlRandom(maxit = 50L)
+
+#3 fold cross validation
+set_cv <- makeResampleDesc("CV",iters = 3L)
+
+#hypertuning 15 minutes
+system.time(
+rf_tune <- tuneParams(learner = rf, resampling = set_cv, task = rf.task, par.set = rf_param, control = rancontrol, measures = acc)
+)
+rf_tune
+rf_tune$x
+rf_tune$y
+
+
+#using hyperparameters for modeling
+rf.tree <- setHyperPars(rf, par.vals = rf_tune$x)
+
+#train a model
+rforest <- train(rf.tree, rf.task)
+getLearnerModel(t.rpart)
+
+#predict
+rfmodel <- predict(rforest, testTask)
+
+#submission file
+submit <- data.frame(Loan_ID = test$Loan_ID, Loan_Status = rfmodel$data$response)
+write.csv(submit, "rforest112.csv",row.names = F) #0.791666666667
+write.csv(submit, "rforest1120.csv",row.names = F) #0.791666666667
+
+
+
+
+
+#load xgboost
+set.seed(1001)
+getParamSet("classif.xgboost")
+
+#make learner with inital parameters
+xg_set <- makeLearner("classif.xgboost", predict.type = "response")
+xg_set$par.vals <- list(
+        objective = "binary:logistic",
+        eval_metric = "error",
+        nrounds = 250
+)
+
+xg_imp <- filterFeatures(trainTask, method = "information.gain", abs = 6)
+
+#define parameters for tuning
+xg_ps <- makeParamSet(
+        makeIntegerParam("nrounds",lower=200,upper=600),
+        makeIntegerParam("max_depth",lower=3,upper=20),
+        makeNumericParam("lambda",lower=0.55,upper=0.60),
+        makeNumericParam("eta", lower = 0.001, upper = 0.5),
+        makeNumericParam("subsample", lower = 0.10, upper = 0.80),
+        makeNumericParam("min_child_weight",lower=1,upper=5),
+        makeNumericParam("colsample_bytree",lower = 0.2,upper = 0.8)
+)
+
+#define search function
+rancontrol <- makeTuneControlRandom(maxit = 50L)
+
+#3 fold cross validation
+set_cv <- makeResampleDesc("CV",iters = 3L)
+
+system.time(
+xg_tune <- tuneParams(learner = xg_set, task = trainTask, resampling = set_cv,measures = acc,par.set = xg_ps, control = rancontrol)
+)
+
+#get best parameters
+xg_tune$x
+
+xg_tune$y
+# acc.test.mean 
+# 0.8110713
+
+#set parameters
+xg_new <- setHyperPars(learner = xg_set, par.vals = xg_tune$x)
+
+#xg_new1 <- setHyperPars(learner = xg_set, par.vals = xg_tune$x)
+
+#train model
+xgmodel <- train(xg_new, trainTask)
+
+#test model
+predict.xg <- predict(xgmodel, testTask)
+#xgboost::xgb.importance( model = xgmodel$learner.model)
+
+#submission file
+submit <- data.frame(Loan_ID = test$Loan_ID, Loan_Status = predict.xg$data$response)
+write.csv(submit, "xgbpred11.csv",row.names = F) #0.27
+write.csv(submit, "xgbpred110.csv",row.names = F) #0.277777777778
+write.csv(submit, "xgboo11.csv",row.names = F) #0.28
+write.csv(submit, "xgboo001.csv",row.names = F) #0.68
+write.csv(submit, "xgboo00100.csv",row.names = F) #0.64
+write.csv(submit, "xgtune11.csv",row.names = F) #0.645
+#GBM
+getParamSet("classif.gbm")
+g.gbm <- makeLearner("classif.gbm", predict.type = "response")
+
+#train
+t.gbm <- train(g.gbm, trainTask)
+getLearnerModel(t.gbm)
+
+#predict
+g.predict <- predict(t.gbm, testTask)
+
+#submission file
+submit <- data.frame(Loan_ID = test$Loan_ID, Loan_Status = g.predict$data$response)
+write.csv(submit, "gbmbase11.csv",row.names = F) #0.715277777778
+
+#specify tuning method
+rancontrol <- makeTuneControlRandom(maxit = 50L)
+
+#3 fold cross validation
+set_cv <- makeResampleDesc("CV",iters = 3L)
+
+#parameters
+gbm_par<- makeParamSet(
+        makeDiscreteParam("distribution", values = "bernoulli"),
+        makeIntegerParam("n.trees", lower = 100, upper = 1000),
+        makeIntegerParam("interaction.depth", lower = 2, upper = 10),
+        makeIntegerParam("n.minobsinnode", lower = 10, upper = 80),
+        makeNumericParam("shrinkage",lower = 0.01, upper = 1)
+)
+
+#tune parameters
+tune_gbm <- tuneParams(learner = g.gbm, task = trainTask,resampling = set_cv,measures = acc,par.set = gbm_par,control = rancontrol)
+
+#check CV accuracy
+tune_gbm$y
+
+#set parameters
+final_gbm <- setHyperPars(learner = g.gbm, par.vals = tune_gbm$x)
+
+#train
+to.gbm <- train(final_gbm, traintask)
+#test 
+pr.gbm <- predict(to.gbm, testTask)
+
+#submission file
+submit <- data.frame(Loan_ID = test$Loan_ID, Loan_Status = pr.gbm$data$response)
+write.csv(submit, "gbmtune11.csv",row.names = F) #0.784722222222
+write.csv(submit, "gbmtune6.csv",row.names = F)
+
+
+#compare several learners at once
+# rdesc = makeResampleDesc("CV", iters = 3)
+# rin = makeResampleInstance(rdesc, task = iris.task)
+# 
+# ## Calculate the performance of two learners based on the same resample instance
+# r.lda = resample("classif.lda", iris.task, rin, show.info = FALSE)
+# r.rpart = resample("classif.rpart", iris.task, rin, show.info = FALSE)
+# r.lda$aggr
+# #> mmce.test.mean 
+# #>     0.02666667
+# r.rpart$aggr
+# #> mmce.test.mean 
+# #>           0.06
+
+#svm
+getParamSet("classif.ksvm")
+ksvm <- makeLearner("classif.ksvm", predict.type = "response")
+
+ksvmmodel <- train(ksvm,trainTask)
+predictsvm <- predict(ksvmmodel, testTask)
+
+#submission file
+submit <- data.frame(Loan_ID = test$Loan_ID, Loan_Status = predictsvm$data$response)
+write.csv(submit, "KSVMclass.csv",row.names = F) #0.777777777778
+
+#svm set parameters
+pssvm <- makeParamSet(
+        makeDiscreteParam("C", values = 2^c(-8,-4,-2,0)),
+        makeDiscreteParam("sigma", values = 2^c(-8,-4,0,4))
+        
+)
+
+ctrl <- makeTuneControlGrid() #grid search
+
+#you can also put show.info = false if you don't want to see your commandline area getting flooded with results
+res <- tuneParams(ksvm, task = trainTask, resampling = set_cv, par.set = pssvm, control = ctrl,measures = acc)
+
+res$x #optimal parameters
+res$y
+
+#convert it into data frame to inspect evaluation of each combination of parameter search results
+res$opt.path 
+
+
+#set the model with best params
+t.svm <- setHyperPars(ksvm, par.vals = res$x)
+
+#train
+par.svm <- train(ksvm, trainTask)
+
+#test
+predict.svm <- predict(par.svm, testTask)
+
+#submission file
+submit <- data.frame(Loan_ID = test$Loan_ID, Loan_Status = predict.svm$data$response)
+write.csv(submit, "tuneSVM11.csv",row.names = F) #0.770833333333
+
