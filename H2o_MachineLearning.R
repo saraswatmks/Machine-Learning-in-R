@@ -1,4 +1,7 @@
-path <- "C:/Users/manish/Desktop/Data/Amonth_Wise/January 2016"
+#This file contains data visualization and machine learning
+#classics done in R
+
+path <- "~/2016/data"
 setwd(path)
 
 #libraries and data
@@ -11,23 +14,29 @@ str(train)
 colSums(is.na(train))
 colSums(is.na(test))
 
+#check target variable
 prop.table(table(train$Loan_Status))
 
 #data exploration with ggplot
 library(ggplot2)
-#bar with fill or stacked
+
+#categorical variable matched with target variable
 ggplot(train,aes(Gender,fill=Loan_Status))+geom_bar(color="black")+scale_fill_manual(values = c("#669933","#FFcc66"))
 ggplot(train,aes(Married,fill=Loan_Status))+
         geom_bar(color="black",position = "dodge")
 
-
 #bar with identity stat="bin" & "identity"
+#stat identify should be used when a bar chart is created using x - y variables
+#for one categorical variable stat="bin" works fine
+#categorical variable vs numeric variable vs Target Variable
 ggplot(train,aes(Married,ApplicantIncome,fill=Loan_Status))+
         geom_bar(stat="identity",position = "dodge")+
         geom_text(aes(label=ApplicantIncome),color="black", vjust=0.2, check_overlap = T,position = position_dodge(.9),size=3)
 
 
 #scatter plot by Target
+#line plot
+#scatter plot
 ggplot(train,aes(ApplicantIncome,CoapplicantIncome,color=Loan_Status))+
         geom_point()
 ggplot(train,aes(ApplicantIncome,CoapplicantIncome))+geom_line()+
@@ -82,6 +91,7 @@ ggplot(train,aes(ApplicantIncome,LoanAmount,shape=Property_Area,colour=Property_
 
 
 #explore data and do necessary computation
+library(data.table)
 setDT(train)
 setDT(test)
 
@@ -154,7 +164,7 @@ test[Loan_Amount_Term %in% c(6,12,36,60,120,84,240,300,350,480),Loan_Amount_Term
 train[is.na(Credit_History),Credit_History := -999L]
 test[is.na(Credit_History),Credit_History := -999L]
 
-#one hot karo
+#one hot encoding
 library(dummies)
 train <- dummy.data.frame(data = train,names = c("Property_Area"))
 test <- dummy.data.frame(data=test,names=c("Property_Area"))
@@ -165,20 +175,19 @@ setDT(test)
 
 #label encode target
 train[,Loan_Status := ifelse(Loan_Status == "N",0,1)] 
-#for XGBoost keep it Loan_Status as integer
+train[,Loan_Status := factor(Loan_Status)]
 
-#train[,Loan_Status := factor(Loan_Status)]
-
-# #create soem features
+# #create some features
 # train[,Total_Income := ApplicantIncome + CoapplicantIncome]
 # test[,Total_Income := ApplicantIncome + CoapplicantIncome]
-
+#this feature is 98% correlated with Coapplicant Income
+        
 a <- train[,.(Loan_ID)]
 b <- test[,.(Loan_ID)]
 b[a,.N,by=.EACHI,on="Loan_ID"][order(-N)] #for ID in either data
 
-
-#h2o Tandav
+        
+#h2o Machine Learning
 library(h2o)
 localH2o <- h2o.init(nthreads = -1)
 
@@ -187,17 +196,19 @@ htest <- as.h2o(test)
 
 df <- h2o.splitFrame(data = htrain,ratios = 0.7,seed = 131)
 
+#create a validation frame with 70 - 30 split
 mtrain <- df[[1]]
 mval <- df[[2]]
 dim(mtrain)
 
+#Check if target variable proportion is maintainted in the resultant validation file
 h2o.table(mtrain$Loan_Status)
 h2o.table(mval$Loan_Status)
 
+#define dependent and independent variable
 y <- "Loan_Status"
 x <- setdiff(names(mtrain),c(y,"Loan_ID"))
 print(x)
-#4200476311016
 
 #glm1
 glm_fit <- h2o.glm(x=x,
@@ -219,7 +230,6 @@ glm_perf2 <- h2o.performance(model = glm_fit2,newdata = mval)
 glm_perf2 #0.688
 
 #retrieve accuracy scores
-h2o.auc(glm_fit2)
 h2o.accuracy(glm_perf,thresholds = 0.5)
 glm_fit2@model$validation_metrics
 
@@ -250,7 +260,7 @@ rf_fit3 <- h2o.randomForest(x=x,y=y,
 h2o.confusionMatrix(rf_fit3) #validation accuracy
 rf_fit3@model$cross_validation_metrics_summary
 
-#GBm
+#GBMs
 gbm_fit1 <- h2o.gbm(x=x,y=y,
                     training_frame = mtrain,
                     model_id = "gbm_fit1",
@@ -380,7 +390,8 @@ rf24 <- h2o.randomForest(x=x,y=y,training_frame = mtrain,
                          seed = 3000)
 rf24@model$validation_metrics #0.693
 
-#hyperparameter Tuning
+#Grid Search
+#Hyperparameter Tuning
 nfolds <- 5
 search_criteria <- list(strategy = "RandomDiscrete",
                         max_runtime_secs = 120)
@@ -526,6 +537,4 @@ colnames(final_df)[2] <- "Loan_Status"
 final_df[,Loan_Status := ifelse(Loan_Status == 0,"N","Y")]
 write.csv(final_df,"1st_Nov_sub.csv",row.names = F)
 #stacking sucks = 0.638 score
-
-
 
