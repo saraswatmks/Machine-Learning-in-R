@@ -45,8 +45,8 @@ sapply(test, function(x) sum(is.na(x))/length(x))*100
 
 #check target variable
 #binary in nature check if data is imbalanced
-setDT(train)[,.N/nrow(train),target]
-setDT(test)[,.N/nrow(test),target]
+train[,.N/nrow(train),target]
+test[,.N/nrow(test),target]
 test[,target := substr(target,start = 1,stop = nchar(target)-1)]
 
 #remove leading whitespace
