@@ -26,9 +26,6 @@ setcol <- c("age",
 train <- read.table("adultdata.txt",header = F,sep = ",",col.names = setcol,na.strings = c(" ?"),stringsAsFactors = F)
 test <- read.table("adulttest.txt",header = F,sep = ",",col.names = setcol,skip = 1, na.strings = c(" ?"),stringsAsFactors = F)
 
-setDT(train)
-setDT(test)
-
 #Data Sanity
 dim(train) #32561 X 15
 dim(test) #16281 X 15
