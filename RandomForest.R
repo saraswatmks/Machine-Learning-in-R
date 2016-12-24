@@ -26,6 +26,9 @@ setcol <- c("age",
 train <- read.table("adultdata.txt",header = F,sep = ",",col.names = setcol,na.strings = c(" ?"),stringsAsFactors = F)
 test <- read.table("adulttest.txt",header = F,sep = ",",col.names = setcol,skip = 1, na.strings = c(" ?"),stringsAsFactors = F)
 
+setDT(train)
+setDT(test)
+
 #Data Sanity
 dim(train) #32561 X 15
 dim(test) #16281 X 15
@@ -38,14 +41,6 @@ sapply(train, function(x) sum(is.na(x))/length(x))*100
 
 table(is.na(test))
 sapply(test, function(x) sum(is.na(x))/length(x))*100
-
-
-#impute missing values
-library(mlr)
-imp1 <- impute(data = train,target = "target",classes = list(integer=imputeMedian(), factor=imputeMode()))
-imp2 <- impute(data = test,target = "target",classes = list(integer=imputeMedian(), factor=imputeMode()))
-train <- imp1$data
-test <- imp2$data
 
 
 #check target variable
@@ -71,6 +66,13 @@ for(i in fact_col)
         set(test,j=i,value = factor(test[[i]]))
 
 
+#impute missing values
+imp1 <- impute(data = train,target = "target",classes = list(integer=imputeMedian(), factor=imputeMode()))
+imp2 <- impute(data = test,target = "target",classes = list(integer=imputeMedian(), factor=imputeMode()))
+train <- setDT(imp1$data)
+test <- setDT(imp2$data)
+            
+            
 #use MLR
 #create a task
 traintask <- makeClassifTask(data = train,target = "target")
@@ -86,7 +88,7 @@ rdesc <- makeResampleDesc("CV",iters=5L)
 library(parallelMap)
 library(parallel)
 parallelStartSocket(cpus = detectCores())
-parallelstart
+#parallelstart
 
 #Bagging
 system.time(
@@ -172,3 +174,4 @@ tune <- tuneParams(learner = rf.lrn
                    ,show.info = T)
 [Tune] Result: mtry=2; nodesize=23 : acc.test.mean=0.858
 
+parllelStop()
