@@ -174,4 +174,5 @@ tune <- tuneParams(learner = rf.lrn
                    ,show.info = T)
 [Tune] Result: mtry=2; nodesize=23 : acc.test.mean=0.858
 
-parllelStop()
+#stop parallelization
+parallelStop()
