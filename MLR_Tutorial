@@ -480,3 +480,5 @@ predict.svm <- predict(par.svm, testTask)
 submit <- data.frame(Loan_ID = test$Loan_ID, Loan_Status = predict.svm$data$response)
 write.csv(submit, "tuneSVM11.csv",row.names = F) #0.770833333333
 
+#Also end stacking techniques
+#
