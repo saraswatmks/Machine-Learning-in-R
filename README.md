@@ -9,3 +9,4 @@ For the purpose of sharing knowledge, this repository introduces you to various 
 3. Ensemble
 4. Validation Techniques
 
+This repository will also contain material on deep learning and artificial intelligence.
